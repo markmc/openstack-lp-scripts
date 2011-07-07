@@ -6,14 +6,19 @@ import subprocess
 import tempfile
 from launchpadlib.launchpad import Launchpad
 
+
+def abort(code, errmsg):
+    print >> sys.stderr, errmsg
+    sys.exit(code)
+
+
 # Argument parsing
 if len(sys.argv) != 5:
     prog = sys.argv[0]
-    print >> sys.stderr, '''Grab tarball and release it on LP as milestone.
+    abort(1, '''Grab tarball and release it on LP as milestone.
 
     Usage: %s <project> <version> <revision> <milestone>
-    Example: %s nova 2011.3 20110702.r1234 diablo-3''' % (prog, prog)
-    sys.exit(1)
+    Example: %s nova 2011.3 20110702.r1234 diablo-3''' % (prog, prog))
 
 (project, version, revision, milestone) = sys.argv[1:]
 
@@ -22,22 +27,25 @@ print "Connecting to Launchpad..."
 try:
     launchpad = Launchpad.login_with('openstack-lp-scripts', 'production')
 except Exception, error:
-    print >> sys.stderr, 'Could not connect to Launchpad:', str(error)
-    sys.exit(2)
+    abort(2, 'Could not connect to Launchpad: ' + str(error))
 
 # Retrieve milestone
 print "Checking milestone..."
-lp_proj = launchpad.projects[project]
+try:
+    lp_proj = launchpad.projects[project]
+except KeyError:
+    abort(2, 'Could not find project: %s' % project)
+
 for lp_milestone in lp_proj.all_milestones:
     if lp_milestone.name == milestone:
+        if lp_milestone.release:
+            abort(2, 'Milestone %s was already released !' % milestone)
         codename = lp_milestone.code_name.lower()
         if len(codename) != 2:
-            print >> sys.stderr, 'Bad code name for milestone: %s' % codename
-            sys.exit(2)
+            abort(2, 'Bad code name for milestone: %s' % codename)
         break
 else:
-    print >> sys.stderr, 'Could not retrieve milestone'
-    sys.exit(2)
+    abort(2, 'Could not find milestone: %s' % milestone)
 
 # Retrieve tgz, check contents and MD5
 print "Downloading tarball..."
@@ -51,8 +59,8 @@ tgz = os.path.join(tmpdir, base_tgz)
 try:
     subprocess.check_call(['tar', 'ztf', tgz])
 except subprocess.CalledProcessError, e:
-    print >> sys.stderr, '%s is not a tarball !' % tgz
-    sys.exit(1)
+    abort(2, '%s is not a tarball. Bad revision specified ?' % base_tgz)
+
 md5 = subprocess.check_output(['md5sum', tgz]).split()[0]
 
 # Sign tgz
@@ -70,7 +78,8 @@ with open(sig) as sig_file:
 
 # Mark milestone released
 print "Marking milestone released..."
-release_notes = "This is the second milestone (diablo-2) on the road to Glance 2011.3."  # TODO fix message
+release_notes = "This is another milestone (%s) on the road to %s %s." \
+    % (milestone, project.capitalize(), version)
 lp_release = lp_milestone.createProductRelease(
             date_released=datetime.datetime.utcnow(),
             release_notes=release_notes)
@@ -91,6 +100,6 @@ result_md5_file = urllib.urlopen(result_md5_url)
 result_md5 = result_md5_file.read().split()[0]
 result_md5_file.close()
 if md5 != result_md5:
-    print >> sys.stderr, 'MD5sums do not match !'
-    sys.exit(3)
+    abort(3, 'MD5sums (%s/%s) do not match !' % (md5, result_md5))
+
 print "Done!"
