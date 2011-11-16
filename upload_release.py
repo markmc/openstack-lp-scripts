@@ -4,6 +4,7 @@ import urllib
 import sys
 import subprocess
 import tempfile
+import time
 from launchpadlib.launchpad import Launchpad
 
 
@@ -13,14 +14,18 @@ def abort(code, errmsg):
 
 
 # Argument parsing
-if len(sys.argv) != 5:
+if len(sys.argv) < 4 or len(sys.argv) > 5:
     prog = sys.argv[0]
-    abort(1, '''Grab tarball and release it on LP as milestone.
+    abort(1, '''Grab tarball and release it on LP as milestone or version.
 
-    Usage: %s <project> <version> <revision> <milestone>
+    Usage: %s <project> <version> <revision> [milestone]
     Example: %s nova 2011.3 20110702.r1234 diablo-3''' % (prog, prog))
 
-(project, version, revision, milestone) = sys.argv[1:]
+(project, version, revision) = sys.argv[1:4]
+if len(sys.argv) == 5:
+    milestone = sys.argv[4]
+else:
+    milestone = version
 
 # Connect to LP
 print "Connecting to Launchpad..."
@@ -40,9 +45,12 @@ for lp_milestone in lp_proj.all_milestones:
     if lp_milestone.name == milestone:
         if lp_milestone.release:
             abort(2, 'Milestone %s was already released !' % milestone)
-        codename = lp_milestone.code_name.lower()
-        if len(codename) != 2:
-            abort(2, 'Bad code name for milestone: %s' % codename)
+        if milestone != version:
+            codename = "~" + lp_milestone.code_name.lower()
+            if len(codename) != 3:
+                abort(2, 'Bad code name for milestone: %s' % codename)
+        else:
+            codename = ""
         break
 else:
     abort(2, 'Could not find milestone: %s' % milestone)
@@ -50,7 +58,7 @@ else:
 # Retrieve tgz, check contents and MD5
 print "Downloading tarball..."
 tmpdir = tempfile.mkdtemp()
-base_tgz = "%s-%s~%s~%s.tar.gz" % (project, version, codename, revision)
+base_tgz = "%s-%s%s~%s.tar.gz" % (project, version, codename, revision)
 url_tgz = "http://%s.openstack.org/tarballs/%s" % (project, base_tgz)
 tgz = os.path.join(tmpdir, base_tgz)
 
@@ -78,24 +86,39 @@ with open(sig) as sig_file:
 
 # Mark milestone released
 print "Marking milestone released..."
-release_notes = "This is another milestone (%s) on the road to %s %s." \
-    % (milestone, project.capitalize(), version)
+if codename:
+    release_notes = "This is another milestone (%s) on the road to %s %s." \
+        % (milestone, project.capitalize(), version)
+else:
+    release_notes = "This is %s %s release." % (project.capitalize(), version)
+
 lp_release = lp_milestone.createProductRelease(
             date_released=datetime.datetime.utcnow(),
             release_notes=release_notes)
 
+# Mark milestone inactive
+print "Marking milestone inactive..."
+lp_milestone.is_active = False
+lp_milestone.lp_save()
+
 # Upload file
 print "Uploading release files..."
-final_tgz = "%s-%s~%s.tar.gz" % (project, version, codename)
+final_tgz = "%s-%s%s.tar.gz" % (project, version, codename)
+if codename:
+    description='%s "%s" milestone' % (project.capitalize(), milestone)
+else:
+    description='%s %s release' % (project.capitalize(), milestone)
 lp_file = lp_release.add_file(file_type='Code Release Tarball',
-    description='%s "%s" milestone' % (project, milestone),
+    description=description,
     file_content=tgz_content, filename=final_tgz,
     signature_content=sig_content, signature_filename=final_tgz + '.asc',
     content_type="application/x-gzip; charset=binary")
 
 # Check LP-reported MD5
 print "Checking MD5s..."
-result_md5_url = "%s/+download/%s/+md5" % (lp_release.web_link, final_tgz)
+time.sleep(2)
+result_md5_url = "http://launchpad.net/%s/+download/%s/+md5" % \
+    (lp_release.self_link[30:], final_tgz)
 result_md5_file = urllib.urlopen(result_md5_url)
 result_md5 = result_md5_file.read().split()[0]
 result_md5_file.close()
