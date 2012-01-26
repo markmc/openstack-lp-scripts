@@ -14,18 +14,29 @@ def abort(code, errmsg):
 
 
 # Argument parsing
-if len(sys.argv) < 4 or len(sys.argv) > 5:
+if len(sys.argv) < 4 or len(sys.argv) > 7:
     prog = sys.argv[0]
     abort(1, '''Grab tarball and release it on LP as milestone or version.
 
-    Usage: %s <project> <version> <revision> [milestone]
+    Usage: %s [--into <LPproject>] <project> <version> <revision> [milestone]
     Example: %s nova 2011.3 20110702.r1234 diablo-3''' % (prog, prog))
 
+if sys.argv[1] == '--into':
+    into = True
+    lpproject = sys.argv[2]
+    sys.argv.pop(1)
+    sys.argv.pop(1)
+else:
+    into = False
+
 (project, version, revision) = sys.argv[1:4]
+if not into:
+    lpproject = project
 if len(sys.argv) == 5:
     milestone = sys.argv[4]
 else:
     milestone = version
+
 
 # Connect to LP
 print "Connecting to Launchpad..."
@@ -37,14 +48,16 @@ except Exception, error:
 # Retrieve milestone
 print "Checking milestone..."
 try:
-    lp_proj = launchpad.projects[project]
+    lp_proj = launchpad.projects[lpproject]
 except KeyError:
-    abort(2, 'Could not find project: %s' % project)
+    abort(2, 'Could not find project: %s' % lpproject)
 
 for lp_milestone in lp_proj.all_milestones:
     if lp_milestone.name == milestone:
-        if lp_milestone.release:
+        if lp_milestone.release and not into:
             abort(2, 'Milestone %s was already released !' % milestone)
+        if not lp_milestone.release and into:
+            abort(2, 'Milestone %s was not released yet !' % milestone)
         if milestone != version:
             codename = "~" + lp_milestone.code_name.lower()
             if len(codename) != 3:
@@ -59,7 +72,7 @@ else:
 print "Downloading tarball..."
 tmpdir = tempfile.mkdtemp()
 base_tgz = "%s-%s%s~%s.tar.gz" % (project, version, codename, revision)
-url_tgz = "http://%s.openstack.org/tarballs/%s" % (project, base_tgz)
+url_tgz = "http://%s.openstack.org/tarballs/%s" % (lpproject, base_tgz)
 tgz = os.path.join(tmpdir, base_tgz)
 
 (tgz, message) = urllib.urlretrieve(url_tgz, filename=tgz)
@@ -85,21 +98,26 @@ with open(sig) as sig_file:
     sig_content = sig_file.read()
 
 # Mark milestone released
-print "Marking milestone released..."
-if codename:
-    release_notes = "This is another milestone (%s) on the road to %s %s." \
-        % (milestone, project.capitalize(), version)
-else:
-    release_notes = "This is %s %s release." % (project.capitalize(), version)
+if not into:
+    print "Marking milestone released..."
+    if codename:
+        release_notes = "This is another milestone (%s) on the road to %s %s." \
+            % (milestone, project.capitalize(), version)
+    else:
+        release_notes = "This is %s %s release." \
+            % (project.capitalize(), version)
 
-lp_release = lp_milestone.createProductRelease(
-            date_released=datetime.datetime.utcnow(),
-            release_notes=release_notes)
+    lp_release = lp_milestone.createProductRelease(
+                date_released=datetime.datetime.utcnow(),
+                release_notes=release_notes)
+else:
+    lp_release = lp_milestone.release
 
 # Mark milestone inactive
-print "Marking milestone inactive..."
-lp_milestone.is_active = False
-lp_milestone.lp_save()
+if not into:
+    print "Marking milestone inactive..."
+    lp_milestone.is_active = False
+    lp_milestone.lp_save()
 
 # Upload file
 print "Uploading release files..."

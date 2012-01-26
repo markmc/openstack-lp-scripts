@@ -7,6 +7,8 @@ parser = argparse.ArgumentParser(description="Process FixCommitted bugs"
 parser.add_argument('projectname', help='the project to act on')
 parser.add_argument('--milestone',
                     help='include bugs targeted to the specified milestone')
+parser.add_argument('--onlymilestone',
+                    help='only include bugs targeted to specified milestone')
 parser.add_argument('--check', action='store_true',
                     help='ACTION: check merge revnos')
 parser.add_argument('--between', type=int, nargs=2,
@@ -35,8 +37,15 @@ bugtasks = proj.searchTasks(status='Fix Committed')
 # Process bugs
 for b in bugtasks:
     bug = b.bug
-    if b.milestone and b.milestone.name != args.milestone:
-        continue
+    if args.onlymilestone:
+        if b.milestone:
+            if b.milestone.name != args.onlymilestone:
+                continue
+        else:
+            continue
+    else:
+        if b.milestone and b.milestone.name != args.milestone:
+            continue
     print bug.id,
     if bug.id in args.exceptions:
         print " - excepted"

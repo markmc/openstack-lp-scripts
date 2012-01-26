@@ -4,8 +4,8 @@ from launchpadlib.launchpad import Launchpad
 # accepted for the series (which therefore do not appear in release status)
 
 # List of project/series combinations to consider
-seriesname = 'diablo'
-productlist = ['nova', 'glance', 'swift']
+seriesname = 'essex'
+productlist = ['nova', 'glance', 'swift', 'keystone', 'horizon']
 
 
 # Log into LP
