@@ -32,6 +32,9 @@ launchpad = Launchpad.login_with('openstack-lp-scripts', 'production')
 # Retrieve FixCommitted bugs
 print "Retrieving project..."
 proj = launchpad.projects[args.projectname]
+#series = proj.getSeries(name='essex')
+#bugtasks = series.searchTasks(status='Fix Committed', omit_targeted=False)
+
 bugtasks = proj.searchTasks(status='Fix Committed')
 
 # Process bugs
