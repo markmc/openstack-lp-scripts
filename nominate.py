@@ -32,7 +32,13 @@ for bugno in args.bugs:
 
     print "Nominating #%s for %s series on %s" % \
         (bugno, args.project, args.series)
-    bug.addNomination(target=series)
+    try:
+        bug.addNomination(target=series)
+    except Exception, e:
+        print "Error adding nomination: %s" % e
 
-    print "Approving the nomination"
-    bug.getNominationFor(target=series).approve()
+    try:
+        print "Approving the nomination"
+        bug.getNominationFor(target=series).approve()
+    except Exception, e:
+        print "Error approving nomination: %s" % e
