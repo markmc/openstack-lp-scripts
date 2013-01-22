@@ -39,5 +39,9 @@ for bugno in args.bugs:
     if not notes:
         notes = [task.bug_target_name for task in bug.bug_tasks]
 
-    print "%s %s [%s]" % (bugno, bug.title, string.join(notes, ','))
+    targets = [task.milestone.name for task in bug.bug_tasks if task.milestone]
+
+    print "%s %s [%s] [%s]" % (bugno, bug.title,
+                               string.join(notes, ','),
+                               string.join(targets, ','))
 
